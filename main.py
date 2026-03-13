@@ -14,7 +14,6 @@ from pushover import (
     notify_reset_same_ip,
     notify_circuit_breaker_tripped,
     notify_reset_deferred,
-    send_pushover,  # ← make sure this is imported
 )
 
 logger = setup_logging()
@@ -101,31 +100,13 @@ def wait_for_gluetun():
                 state.data["last_exit_ip"] = ip
                 state.save()
                 location = get_exit_location(ip)
-                now_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S %Z")
-
                 logger.info(
                     "VPN tunnel UP ✓",
                     status="running",
                     public_ip=ip,
                     exit_country=location,
-                    time=now_str
+                    time=datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S %Z")
                 )
-
-                # Send Pushover notification on successful startup
-                startup_msg = (
-                    "VPN Monitor started successfully\n"
-                    f"Exit IP: {ip}\n"
-                    f"Location: {location}\n"
-                    f"Time: {now_str}"
-                )
-                send_pushover(
-                    config.PUSHOVER_USER,
-                    config.PUSHOVER_TOKEN,
-                    startup_msg,
-                    priority=-1,   # low priority (no sound/alert by default)
-                    sound="none"   # silent; change to "pushover" or "magic" if desired
-                )
-
                 break
 
         if attempts % 5 == 0:
