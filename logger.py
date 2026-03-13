@@ -1,9 +1,21 @@
+# logger.py - full updated file (colors kept, purple avoided via level styles)
+
 import structlog
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
 
 def setup_logging():
+    # Custom level styles to prevent purple/magenta tones
+    level_styles = structlog.dev.LevelStyles(
+        debug=dict(color='cyan'),           # blue/cyan
+        info=dict(color='green'),           # green for normal info & polls
+        warning=dict(color='yellow'),       # yellow/orange
+        error=dict(color='red'),            # red
+        critical=dict(color='red', bright=True),  # bright red instead of magenta/purple
+    )
+
+    # Configure structlog processors
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,
@@ -17,12 +29,14 @@ def setup_logging():
         cache_logger_on_first_use=True,
     )
 
-    # Pretty, colored console output
+    # Pretty console renderer with custom level colors
     console_renderer = structlog.dev.ConsoleRenderer(
         colors=True,
+        level_styles=level_styles,          # applies the overrides
         sort_keys=False,
     )
 
+    # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(structlog.stdlib.ProcessorFormatter(
         processor=console_renderer,
@@ -32,7 +46,7 @@ def setup_logging():
         ]
     ))
 
-    # Structured JSON file logging (rolling 10MB)
+    # JSON rolling file handler (10 MB, 5 backups)
     file_handler = RotatingFileHandler(
         "/data/vpn-monitor.log",
         maxBytes=10 * 1024 * 1024,
@@ -40,6 +54,7 @@ def setup_logging():
     )
     file_handler.setFormatter(logging.Formatter("%(message)s"))
 
+    # Attach handlers to root logger
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(console_handler)
