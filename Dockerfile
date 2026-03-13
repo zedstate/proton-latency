@@ -1,26 +1,33 @@
 FROM python:3.12-slim
 
-# Install system dependencies
+# Install minimal system deps (ping + curl + ca-certificates for https)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     iputils-ping \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install official Ookla speedtest CLI
-RUN curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | bash \
-    && apt-get install -y speedtest
+# Install official Ookla Speedtest CLI binary (direct download, no repo script)
+# Latest stable as of 2025/2026 — check https://www.speedtest.net/apps/cli for updates
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then TARBALL="ookla-speedtest-1.2.0-linux-x86_64.tgz"; \
+    elif [ "$ARCH" = "arm64" ]; then TARBALL="ookla-speedtest-1.2.0-linux-aarch64.tgz"; \
+    else echo "Unsupported architecture: $ARCH" && exit 1; fi && \
+    curl -L -o speedtest.tgz "https://install.speedtest.net/app/cli/${TARBALL}" && \
+    tar xzf speedtest.tgz && \
+    mv speedtest /usr/local/bin/speedtest && \
+    chmod +x /usr/local/bin/speedtest && \
+    rm speedtest.tgz && \
+    # Accept license non-interactively on first run (required)
+    speedtest --accept-license --accept-gdpr >/dev/null 2>&1 || true
 
 WORKDIR /app
 
-# Copy and install Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
 COPY . .
 
-# Ensure /data is writable (volume will be mounted here)
 RUN mkdir -p /data && chmod 777 /data
 
 CMD ["python", "main.py"]
