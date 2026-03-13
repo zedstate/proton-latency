@@ -1,7 +1,6 @@
 import time
 from datetime import datetime
 import pytz
-import requests  # ← added for IP geolocation lookup
 
 from config import Config
 from logger import setup_logging
@@ -15,7 +14,7 @@ from pushover import (
     notify_reset_same_ip,
     notify_circuit_breaker_tripped,
     notify_reset_deferred,
-    send_pushover,
+    send_pushover,  # ← make sure this is imported
 )
 
 logger = setup_logging()
@@ -29,54 +28,22 @@ state = State(config.DATA_DIR)
 tz = pytz.timezone(config.TZ)
 
 
-def get_ip_location(ip: str | None) -> str:
-    """Fetch real-time geolocation from free ipapi.co API"""
-    if not ip:
-        return "unknown"
-    try:
-        r = requests.get(f"https://ipapi.co/{ip}/json/", timeout=5)
-        r.raise_for_status()
-        data = r.json()
-        city = data.get("city", "Unknown")
-        region = data.get("region", "")
-        country = data.get("country_name", "Unknown")
-        if city != "Unknown" and region:
-            return f"{city}, {region}, {country}"
-        elif city != "Unknown":
-            return f"{city}, {country}"
-        else:
-            return country
-    except Exception as e:
-        logger.warning("IP geolocation lookup failed", ip=ip, error=str(e))
-        return "lookup failed"
-
-
-def get_exit_location_fallback(ip: str | None) -> str:
-    """Fallback heuristic for Proton free/common ranges"""
+def get_exit_location(ip: str | None) -> str:
+    """Quick heuristic for common Proton Free exit locations"""
     if not ip:
         return "unknown"
     mapping = {
-        "37.19.": "Poland / Romania",
-        "37.120.": "Netherlands",
-        "185.220.": "United States / Tor mix",
-        "185.": "Netherlands / various",
-        "146.70.": "Switzerland / Romania",
+        "185.": "Netherlands",
+        "37.120.": "Romania",
+        "146.70.": "Switzerland",
         "209.127.": "United States",
-        "45.": "Various (US/CA/JP/SG)",
-        # Add more prefixes as you observe reconnects
+        "185.220.": "United States / Tor-related",
+        "45.": "Various (often US/CA)",
     }
-    for prefix, loc in mapping.items():
+    for prefix, country in mapping.items():
         if ip.startswith(prefix):
-            return loc
-    return f"{ip} (ProtonVPN exit - country unknown)"
-
-
-def get_exit_location(ip: str | None) -> str:
-    """Preferred: API lookup → fallback heuristic"""
-    api_loc = get_ip_location(ip)
-    if api_loc != "lookup failed":
-        return api_loc
-    return get_exit_location_fallback(ip)
+            return country
+    return f"{ip} (unknown location)"
 
 
 def log_poll_summary(
@@ -140,7 +107,7 @@ def wait_for_gluetun():
                     "VPN tunnel UP ✓",
                     status="running",
                     public_ip=ip,
-                    exit_location=location,
+                    exit_country=location,
                     time=now_str
                 )
 
