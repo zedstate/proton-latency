@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "8888:8888/tcp"      # HTTP proxy (optional)
+      - "8388:8388/tcp"      # Shadowsocks (optional)
+      - "8388:8388/udp"      # Shadowsocks (optional)
+      - "8000:8000/tcp"      # gluetun HTTP control API (exposed only if you need external access; otherwise remove)
+    volumes:
+      - /volume1/docker/gluetun:/gluetun  # persistent config + WireGuard keys etc.
+    environment:
+      # ────────────────────────────────────────────────
+      # Core gluetun settings (adjust to your VPN provider)
+      # ────────────────────────────────────────────────
+      - VPN_SERVICE_PROVIDER=protonvpn           # or mullvad, nordvpn, surfshark, etc.
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=your_private_key_here==
+      - WIREGUARD_ADDRESSES=10.2.0.2/32          # example; get from Proton
+      - SERVER_COUNTRIES=Switzerland             # or Netherlands, Sweden, etc. for free servers
+      # - SERVER_CITIES=Zurich                     # optional narrowing
+      # - SERVER_REGIONS=                      # optional
+
+      # HTTP control server (required for vpn-monitor)
+      - HTTP_CONTROL_SERVER=on
+      - HTTP_CONTROL_SERVER_PORT=8000
+      - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"name":"vpn-monitor","routes":["GET /v1/vpn/status","PUT /v1/vpn/status","GET /v1/publicip/ip"],"auth":"apikey","apikey":"${GLUETUN_API_KEY}"}
+
+      # Other common gluetun env vars (optional but useful)
+      - TZ=America/New_York
+      - LOG_LEVEL=info
+      - FIREWALL_OUTBOUND_SUBNETS=192.168.1.0/24  # if needed for LAN access
+
+    restart: unless-stopped
+
+  vpn-monitor:
+    image: ghcr.io/yourusername/vpn-monitor:latest   # ← change to your actual repo/image name
+    container_name: vpn-monitor
+    network_mode: service:gluetun                     # ← critical: shares gluetun's network stack
+    depends_on:
+      - gluetun
+    environment:
+      - TZ=America/New_York
+      - GLUETUN_API=http://127.0.0.1:8000
+      - GLUETUN_API_KEY=${GLUETUN_API_KEY}           # must match gluetun's apikey above
+      - PUSHOVER_TOKEN=${PUSHOVER_TOKEN}
+      - PUSHOVER_USER=${PUSHOVER_USER}
+      # Tuning parameters (defaults are already sensible)
+      - LATENCY_WARN_MS=150
+      - LATENCY_CRIT_MS=200
+      - LATENCY_CONSECUTIVE_HITS=2
+      - SPEED_MIN_MBPS=15.0
+      - MIN_RECONNECT_MINUTES=60
+      - MAX_RESETS_PER_HOUR=1
+      - CIRCUIT_BREAKER_THRESHOLD=3
+      - POLL_INTERVAL_SECONDS=60
+      - RECONNECT_TIMEOUT_SECONDS=60
+    volumes:
+      - /volume1/docker/vpn-monitor/data:/data      # persistent schedule.json, state.json, vpn-monitor.log
+    restart: unless-stopped
+
+# Optional: define the volume explicitly if you prefer named volumes over bind mounts
+# volumes:
+#   vpn-monitor-data:
