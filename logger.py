@@ -2,29 +2,41 @@ import structlog
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
-import json
 
 def setup_logging():
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,
             structlog.processors.StackInfoRenderer(),
-            structlog.dev.set_exc_info,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.processors.JSONRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         wrapper_class=structlog.make_filtering_bound_logger(logging.NOTSET),
-        logger_factory=structlog.WriteLoggerFactory(),
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
-    # Colored console
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(structlog.dev.ConsoleRenderer(colors=True))
+    # Pretty, colored console output
+    console_renderer = structlog.dev.ConsoleRenderer(
+        colors=True,
+        sort_keys=False,
+    )
 
-    # JSON file - 10MB rolling, keep 5 backups
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(structlog.stdlib.ProcessorFormatter(
+        processor=console_renderer,
+        foreign_pre_chain=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S", utc=False),
+        ]
+    ))
+
+    # Structured JSON file logging (rolling 10MB)
     file_handler = RotatingFileHandler(
-        "/data/vpn-monitor.log", maxBytes=10*1024*1024, backupCount=5
+        "/data/vpn-monitor.log",
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
     )
     file_handler.setFormatter(logging.Formatter("%(message)s"))
 
